@@ -1,8 +1,21 @@
-#[cfg(test)]
-#[macro_use]
-extern crate quickcheck;
+//! This crate implements the "eytzinger" (aka BFS) array layout where
+//! a binary search tree is stored by layer (instead of as a sorted array).
+//! This can have significant performance benefits
+//! (see [Khuong, Paul-Virak, and Pat Morin. "Array layouts for comparison-based searching."][1]).
+//!
+//! # Usage
+//!
+//! ```
+//! let mut data = [0, 1, 2, 3, 4, 5, 6];
+//! eytzinger::eytzingerize(&mut data, &mut eytzinger::permutation::InplacePermutator);
+//! assert_eq!(data, [3, 1, 5, 0, 2, 4, 6]);
+//! ```
+//!
+//! [1]: https://arxiv.org/pdf/1509.05053.pdf
 
-use std::mem;
+#![warn(missing_docs, missing_debug_implementations)]
+
+use permutation::*;
 
 /// The basic building blocks this is made of.
 pub mod foundation {
@@ -52,57 +65,86 @@ pub mod foundation {
         y - x - 1
     }
 
+    /// Converts an index in an eytzinger array to the corresponding tree coordinates `(ipk, li)`.
     pub fn index_to_node(i: usize) -> (usize, usize) {
         let ipk = (i + 2).next_power_of_two().trailing_zeros() as usize;
         let li = i + 1 - (1 << (ipk - 1));
         (ipk, li)
     }
 
+    /// Given an array size (`n`) and an index into the eytzinger array (`ì`),
+    /// this function computes the index of this value in a sorted array.
+    ///
+    /// This is simply `index_to_node` + `get_permutation_element_by_node`.
     pub fn get_permutation_element(n: usize, i: usize) -> usize {
         let (ipk, li) = index_to_node(i);
         get_permutation_element_by_node(n, ipk, li)
     }
 }
 
-/*
-pub fn magictest1(from: &[usize], to: &mut [usize]) {
-    assert_eq!(from.len(), to.len());
+/// Abstractions around applying generic permutations using generic implementations.
+pub mod permutation {
+    use std::iter::Cloned;
+    use std::slice::Iter;
 
-    for (t, p) in to.iter_mut().zip(PermutationGenerator::new(from.len())) {
-        *t = from[p];
+    /// A generic permutation.
+    pub trait Permutation {
+        /// An iterator through the permutation.
+        /// This may be more efficient than indexing a counter.
+        type Iter: Iterator<Item=usize>;
+
+        /// Get an iterator.
+        fn iterable(&self) -> Self::Iter;
+        /// Index into this permutation.
+        fn index(&self, i: usize) -> usize;
     }
-}
 
-pub fn magictest2(from: &[usize], to: &mut [usize]) {
-    assert_eq!(from.len(), to.len());
+    impl<'a> Permutation for &'a [usize] {
+        type Iter = Cloned<Iter<'a, usize>>;
 
-    let size = from.len();
-    for (i, t) in to.iter_mut().enumerate() {
-        *t = from[get_permutation_element(size, i)];
-    }
-}
-*/
-
-
-fn permute_inplace(data: &mut [usize], permutation: &[usize]) {
-    for (i, mut p) in permutation.iter().cloned().enumerate() {
-        while p < i {
-            p = permutation[p];
+        fn iterable(&self) -> Self::Iter {
+            self.iter().cloned()
         }
 
-        if p > i {
-            // swap
-            let tmp = data[i];
-            data[i] = data[p];
-            data[p] = tmp;
+        fn index(&self, i: usize) -> usize {
+            self[i]
+        }
+    }
+
+    /// A generic permutator.
+    pub trait Permutator<T, P: ?Sized + Permutation> {
+        /// Applies the given permutation to the given array.
+        fn permute(&mut self, data: &mut [T], permutation: &P);
+    }
+
+    /// Simple permutator that does not allocate.
+    ///
+    /// Worst-case runtime is in `O(n^2)`, so you should only use this for small permutations.
+    #[derive(Clone, Copy, Debug)]
+    pub struct InplacePermutator;
+
+    impl<T, P: ?Sized + Permutation> Permutator<T, P> for InplacePermutator {
+        fn permute(&mut self, data: &mut [T], permutation: &P) {
+            for (i, mut p) in permutation.iterable().enumerate() {
+                while p < i {
+                    p = permutation.index(p);
+                }
+
+                if p > i {
+                    data.swap(i, p);
+                }
+            }
         }
     }
 }
+
+
 
 /// Generates a permutation that transforms a sorted array into an eytzinger array.
 ///
 /// This is an iterator which yields a permutation (indexes into the sorted array)
 /// in the order of an eytzinger array.
+#[derive(Clone, Debug)]
 pub struct PermutationGenerator {
     size: usize,
     ipk: usize,
@@ -148,15 +190,27 @@ impl Iterator for PermutationGenerator {
 }
 impl ExactSizeIterator for PermutationGenerator {}
 
-/// Converts a sorted array to
-pub fn eytzingerize(data: &[usize]) -> Vec<usize> {
-    let mut out = Vec::with_capacity(data.len());
-    for i in PermutationGenerator::new(data.len()) {
-        out.push(data[i]);
+impl Permutation for PermutationGenerator {
+    type Iter = PermutationGenerator;
+
+    fn iterable(&self) -> PermutationGenerator {
+        self.clone()
     }
-    out
+    fn index(&self, i: usize) -> usize {
+        foundation::get_permutation_element(self.size, i)
+    }
 }
 
+/// Converts a sorted array to its eytzinger representation.
+pub fn eytzingerize<T, P: Permutator<T, PermutationGenerator>>(data: &mut [T], permutator: &mut P) {
+    let len = data.len();
+    permutator.permute(data, &PermutationGenerator::new(len))
+}
+
+
+#[cfg(test)]
+#[macro_use]
+extern crate quickcheck;
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -203,14 +257,11 @@ mod tests {
 
     #[test]
     fn eytzingerize_simple() {
-        let mut scratch = [0; 1024];
+        let mut permutator = InplacePermutator;
         for &array in REF_PERMUTATIONS {
-            let payload: Vec<_> = (0..array.len()).collect();
-            assert_eq!(eytzingerize(&payload).as_slice(), array);
-            /*
-            eytzingerize(payload.as_mut_slice(), &mut scratch);
-            assert_eq!(array, payload.as_slice());
-*/
+            let mut payload: Vec<_> = (0..array.len()).collect();
+            eytzingerize(payload.as_mut_slice(), &mut permutator);
+            assert_eq!(payload, array);
         }
     }
 
@@ -241,9 +292,9 @@ mod tests {
 
     #[test]
     fn simple_inplace_permutation() {
-        let permutation = &[4, 2, 3, 0, 1];
+        let permutation: &[usize] = &[4, 2, 3, 0, 1];
         let mut data = [1, 2, 3, 4, 5];
-        permute_inplace(&mut data, permutation);
+        InplacePermutator.permute(&mut data, &permutation);
         assert_eq!(data, [5, 3, 4, 1, 2]);
     }
 
@@ -255,7 +306,7 @@ mod tests {
 
             // now test
             let mut data: Vec<_> = (0..perm.len()).collect();
-            permute_inplace(data.as_mut_slice(), perm.as_slice());
+            InplacePermutator.permute(data.as_mut_slice(), &perm.as_slice());
             data == perm
         }
 

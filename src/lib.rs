@@ -6,18 +6,23 @@
 //! # Usage
 //!
 //! ```
+//! use eytzinger::SliceExt;
 //! let mut data = [0, 1, 2, 3, 4, 5, 6];
-//! eytzinger::eytzingerize(&mut data, &mut eytzinger::permutation::InplacePermutator);
+//! data.eytzingerize(&mut eytzinger::permutation::InplacePermutator);
 //! assert_eq!(data, [3, 1, 5, 0, 2, 4, 6]);
+//! assert_eq!(data.eytzinger_search(&5), Some(2));
+//! assert_eq!(data.eytzinger_search_by(|x| x.cmp(&6)), Some(6));
 //! ```
 //!
 //! [1]: https://arxiv.org/pdf/1509.05053.pdf
 
 #![warn(missing_docs, missing_debug_implementations)]
 
+use std::cmp::{Ord, Ordering};
+use std::borrow::Borrow;
 use permutation::*;
 
-/// The basic building blocks this is made of.
+/// The basic building blocks this crate is made of.
 pub mod foundation {
     /// Given an array size (`n`), tree layer index (`ipk`) and element index (`li`),
     /// this function computes the index of this value in a sorted array.
@@ -202,9 +207,148 @@ impl Permutation for PermutationGenerator {
 }
 
 /// Converts a sorted array to its eytzinger representation.
+///
+/// # Example
+///
+/// ```
+/// let mut data = [0, 1, 2, 3, 4, 5, 6];
+/// eytzinger::eytzingerize(&mut data, &mut eytzinger::permutation::InplacePermutator);
+/// assert_eq!(data, [3, 1, 5, 0, 2, 4, 6]);
+/// ```
 pub fn eytzingerize<T, P: Permutator<T, PermutationGenerator>>(data: &mut [T], permutator: &mut P) {
     let len = data.len();
     permutator.permute(data, &PermutationGenerator::new(len))
+}
+
+/// Eytzinger extension methods for slices.
+pub trait SliceExt<T> {
+    /// Converts an already sorted array to its eytzinger representation.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use eytzinger::SliceExt;
+    /// let mut data = [0, 1, 2, 3, 4, 5, 6];
+    /// data.eytzingerize(&mut eytzinger::permutation::InplacePermutator);
+    /// assert_eq!(data, [3, 1, 5, 0, 2, 4, 6]);
+    /// ```
+    fn eytzingerize<P: Permutator<T, PermutationGenerator>>(&mut self, permutator: &mut P);
+
+    /// Binary searches this eytzinger slice for a given element.
+    ///
+    /// If the value is found then `Some` is returned, containing the index of the matching element;
+    /// if the value is not found then `None` is returned.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use eytzinger::SliceExt;
+    /// let s = [3, 1, 5, 0, 2, 4, 6];
+    /// assert_eq!(s.eytzinger_search(&5), Some(2));
+    /// assert_eq!(s.eytzinger_search(&6), Some(6));
+    /// assert_eq!(s.eytzinger_search(&7), None);
+    /// ```
+    fn eytzinger_search<Q: ?Sized>(&self, x: &Q) -> Option<usize> where Q: Ord, T: Borrow<Q>;
+
+    /// Binary searches this eytzinger slice with a comparator function.
+    ///
+    /// The comparator function should implement an order consistent with the sort order
+    /// of the underlying eytzinger slice, returning an order code that indicates whether
+    /// its argument is `Less`, `Equal` or `Greater` than the desired target.
+    ///
+    /// If a matching value is found then `Some` is returned, containing the index of the
+    /// matching element; if no match is found then `None` is returned.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use eytzinger::SliceExt;
+    /// let s = [3, 1, 5, 0, 2, 4, 6];
+    /// assert_eq!(s.eytzinger_search_by(|x| x.cmp(&5)), Some(2));
+    /// assert_eq!(s.eytzinger_search_by(|x| x.cmp(&6)), Some(6));
+    /// assert_eq!(s.eytzinger_search_by(|x| x.cmp(&7)), None);
+    /// ```
+    fn eytzinger_search_by<'a, F>(&'a self, f: F) -> Option<usize> where F: FnMut(&'a T) -> Ordering, T: 'a;
+
+    /// Binary searches this sorted slice with a key extraction function.
+    ///
+    /// Assumes that the slice is eytzinger-sorted by the key, for instance with
+    /// `slice::sort_by_key` combined with `eytzinger::eytzingerize` using the
+    /// same key extraction function.
+    ///
+    /// If a matching value is found then `Some` is returned, containing the index of the
+    /// matching element; if no match is found then `None` is returned.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use eytzinger::SliceExt;
+    /// let s = [(3, 'd'), (1, 'b'), (5, 'f'), (0, 'a'), (2, 'c'), (4, 'e'), (6, 'g')];
+    /// assert_eq!(s.eytzinger_search_by_key(&'f', |&(_, b)| b), Some(2));
+    /// assert_eq!(s.eytzinger_search_by_key(&'g', |&(_, b)| b), Some(6));
+    /// assert_eq!(s.eytzinger_search_by_key(&'x', |&(_, b)| b), None);
+    /// ```
+    fn eytzinger_search_by_key<'a, B, F, Q: ?Sized>(&'a self, b: &Q, f: F) -> Option<usize>
+        where B: Borrow<Q>,
+              F: FnMut(&'a T) -> B,
+              Q: Ord,
+              T: 'a;
+}
+
+/// Binary searches this eytzinger slice with a comparator function.
+///
+/// The comparator function should implement an order consistent with the sort order
+/// of the underlying eytzinger slice, returning an order code that indicates whether
+/// its argument is `Less`, `Equal` or `Greater` than the desired target.
+///
+/// If a matching value is found then `Some` is returned, containing the index of the
+/// matching element; if no match is found then `None` is returned.
+///
+/// # Examples
+///
+/// ```
+/// use eytzinger::eytzinger_search_by;
+/// let s = [3, 1, 5, 0, 2, 4, 6];
+/// assert_eq!(eytzinger_search_by(&s, |x| x.cmp(&3)), Some(0));
+/// assert_eq!(eytzinger_search_by(&s, |x| x.cmp(&5)), Some(2));
+/// assert_eq!(eytzinger_search_by(&s, |x| x.cmp(&6)), Some(6));
+/// assert_eq!(eytzinger_search_by(&s, |x| x.cmp(&7)), None);
+/// ```
+pub fn eytzinger_search_by<'a, T: 'a, F>(data: &'a [T], mut f: F) -> Option<usize>
+    where F: FnMut(&'a T) -> Ordering {
+    let mut i = 0;
+    loop {
+        match data.get(i) {
+            Some(ref v) => match f(v) {
+                Ordering::Equal => return Some(i),
+                Ordering::Greater => i = 2 * (i + 1) - 1,
+                Ordering::Less => i = 2 * (i + 1),
+            },
+            None => return None,
+        }
+    }
+}
+
+impl<T> SliceExt<T> for [T] {
+    fn eytzingerize<P: Permutator<T, PermutationGenerator>>(&mut self, permutator: &mut P) {
+        eytzingerize(self, permutator)
+    }
+
+    fn eytzinger_search<Q: ?Sized>(&self, x: &Q) -> Option<usize> where Q: Ord, T: Borrow<Q> {
+        self.eytzinger_search_by(|e| e.borrow().cmp(x))
+    }
+
+    fn eytzinger_search_by<'a, F>(&'a self, f: F) -> Option<usize> where F: FnMut(&'a T) -> Ordering, T: 'a {
+        eytzinger_search_by(self, f)
+    }
+
+    fn eytzinger_search_by_key<'a, B, F, Q: ?Sized>(&'a self, b: &Q, mut f: F) -> Option<usize>
+        where B: Borrow<Q>,
+              F: FnMut(&'a T) -> B,
+              Q: Ord,
+              T: 'a {
+        self.eytzinger_search_by(|k| f(k).borrow().cmp(b))
+    }
 }
 
 

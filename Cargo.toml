@@ -1,0 +1,10 @@
+[package]
+name = "eytzinger"
+version = "0.1.0"
+authors = ["main() <main@ehvag.de>"]
+
+[profile.release]
+debug = true
+
+[dev-dependencies]
+quickcheck = "0.4"

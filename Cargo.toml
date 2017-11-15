@@ -1,6 +1,10 @@
 [package]
 name = "eytzinger"
-version = "0.1.0"
+description = 'This crate implements the "eytzinger" (aka BFS) array layout.'
+license = "MIT"
+documentation = "https://docs.rs/eytzinger"
+repository = "https://github.com/main--/rust-eytzinger"
+version = "1.0.0"
 authors = ["main() <main@ehvag.de>"]
 
 [profile.release]

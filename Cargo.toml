@@ -12,3 +12,6 @@ debug = true
 
 [dev-dependencies]
 quickcheck = "0.4"
+
+[features]
+branchless = []

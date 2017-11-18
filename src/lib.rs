@@ -314,7 +314,13 @@ pub trait SliceExt<T> {
 /// assert_eq!(eytzinger_search_by(&s, |x| x.cmp(&6)), Some(6));
 /// assert_eq!(eytzinger_search_by(&s, |x| x.cmp(&7)), None);
 /// ```
-pub fn eytzinger_search_by<'a, T: 'a, F>(data: &'a [T], mut f: F) -> Option<usize>
+pub fn eytzinger_search_by<'a, T: 'a, F>(data: &'a [T], f: F) -> Option<usize>
+    where F: FnMut(&'a T) -> Ordering {
+    eytzinger_search_by_impl(data, f)
+}
+
+#[cfg(not(feature = "branchless"))]
+pub fn eytzinger_search_by_impl<'a, T: 'a, F>(data: &'a [T], mut f: F) -> Option<usize>
     where F: FnMut(&'a T) -> Ordering {
     let mut i = 0;
     loop {
@@ -334,6 +340,29 @@ pub fn eytzinger_search_by<'a, T: 'a, F>(data: &'a [T], mut f: F) -> Option<usiz
             }
             None => return None,
         }
+    }
+}
+
+#[cfg(feature = "branchless")]
+pub fn eytzinger_search_by_impl<'a, T: 'a, F>(data: &'a [T], mut f: F) -> Option<usize>
+    where F: FnMut(&'a T) -> Ordering {
+    let mut i = 0;
+    while i < data.len() {
+        let v = &data[i]; // this range check is optimized out :D
+        i = match f(v) {
+            Ordering::Greater | Ordering::Equal => 2 * i + 1,
+            Ordering::Less => 2 * i + 2,
+        };
+    }
+
+    // magic from the paper to fix up the (incomplete) final tree layer
+    // (only difference is that we recheck f() because this is exact search)
+    let p = i + 1;
+    let j = p >> (1 + (!p).trailing_zeros());
+    if j != 0 && (f(&data[j - 1]) == Ordering::Equal) {
+        Some(j - 1)
+    } else {
+        None
     }
 }
 

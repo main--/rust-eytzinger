@@ -320,7 +320,7 @@ pub fn eytzinger_search_by<'a, T: 'a, F>(data: &'a [T], f: F) -> Option<usize>
 }
 
 #[cfg(not(feature = "branchless"))]
-pub fn eytzinger_search_by_impl<'a, T: 'a, F>(data: &'a [T], mut f: F) -> Option<usize>
+fn eytzinger_search_by_impl<'a, T: 'a, F>(data: &'a [T], mut f: F) -> Option<usize>
     where F: FnMut(&'a T) -> Ordering {
     let mut i = 0;
     loop {
@@ -344,7 +344,7 @@ pub fn eytzinger_search_by_impl<'a, T: 'a, F>(data: &'a [T], mut f: F) -> Option
 }
 
 #[cfg(feature = "branchless")]
-pub fn eytzinger_search_by_impl<'a, T: 'a, F>(data: &'a [T], mut f: F) -> Option<usize>
+fn eytzinger_search_by_impl<'a, T: 'a, F>(data: &'a [T], mut f: F) -> Option<usize>
     where F: FnMut(&'a T) -> Ordering {
     let mut i = 0;
     while i < data.len() {

@@ -319,11 +319,14 @@ pub fn eytzinger_search_by<'a, T: 'a, F>(data: &'a [T], mut f: F) -> Option<usiz
     let mut i = 0;
     loop {
         match data.get(i) {
-            Some(ref v) => match f(v) {
-                Ordering::Equal => return Some(i),
-                Ordering::Greater => i = 2 * (i + 1) - 1,
-                Ordering::Less => i = 2 * (i + 1),
-            },
+            Some(ref v) => {
+                // I was hoping the optimizer could handle this but it can't
+                // So here goes the evil hack: Ordering is -1/0/1
+                // We just cast it, +1, add.
+                let x = f(v) as usize + 1;
+                if x == 0 { return Some(i) }
+                i = 2 * i + x;
+            }
             None => return None,
         }
     }

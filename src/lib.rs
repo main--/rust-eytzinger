@@ -320,12 +320,17 @@ pub fn eytzinger_search_by<'a, T: 'a, F>(data: &'a [T], mut f: F) -> Option<usiz
     loop {
         match data.get(i) {
             Some(ref v) => {
-                // I was hoping the optimizer could handle this but it can't
-                // So here goes the evil hack: Ordering is -1/0/1
-                // We just cast it, +1, add.
-                let x = f(v) as usize + 1;
-                if x == 0 { return Some(i) }
-                i = 2 * i + x;
+                match f(v) {
+                    Ordering::Equal => return Some(i),
+                    o => {
+                        // I was hoping the optimizer could handle this but it can't
+                        // So here goes the evil hack: Ordering is -1/0/1
+                        // So we use this dirty trick to map this to +2/X/+1
+                        let o = o as usize;
+                        let o = (o >> 1) & 1;
+                        i = 2 * i + 1 + o;
+                    }
+                };
             }
             None => return None,
         }

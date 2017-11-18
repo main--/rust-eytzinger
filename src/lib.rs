@@ -450,6 +450,15 @@ mod tests {
         assert_eq!(data, [5, 3, 4, 1, 2]);
     }
 
+    #[test]
+    fn search_negative() {
+        let data: &[i32] = &[6, 2, 10, 0, 4, 8, 12];
+        for i in -10..20 {
+            let expected = data.iter().position(|&x| x == i);
+            assert_eq!(expected, data.eytzinger_search(&i));
+        }
+    }
+
     quickcheck! {
         fn inplace_permutation(junk: Vec<usize>) -> bool {
             // first create a permutation from the random array
@@ -481,6 +490,15 @@ mod tests {
             }
 
             checked == length
+        }
+
+        fn search_works(data: Vec<usize>) -> bool {
+            let mut data = data;
+            data.sort();
+            data.dedup();
+            data.eytzingerize(&mut InplacePermutator);
+
+            data.iter().enumerate().all(|(i, v)| data.eytzinger_search(v) == Some(i))
         }
     }
 }

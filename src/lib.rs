@@ -55,6 +55,7 @@ pub mod foundation {
     /// and an eytzinger array: If you look at the plot sideways (literally), you can see the tree
     /// with all its layers. The only secret sauce here is `2^floor(log2(x))` which is elementary to
     /// get exponentially growing windows (to build tree layers).
+    #[inline]
     pub fn get_permutation_element_by_node(n: usize, ipk: usize, li: usize) -> usize {
         let zk = li * 2 + 1;
         // k = zk * 2^-ipk
@@ -71,6 +72,7 @@ pub mod foundation {
     }
 
     /// Converts an index in an eytzinger array to the corresponding tree coordinates `(ipk, li)`.
+    #[inline]
     pub fn index_to_node(i: usize) -> (usize, usize) {
         let ipk = (i + 2).next_power_of_two().trailing_zeros() as usize;
         let li = i + 1 - (1 << (ipk - 1));
@@ -81,6 +83,7 @@ pub mod foundation {
     /// this function computes the index of this value in a sorted array.
     ///
     /// This is simply `index_to_node` + `get_permutation_element_by_node`.
+    #[inline]
     pub fn get_permutation_element(n: usize, i: usize) -> usize {
         let (ipk, li) = index_to_node(i);
         get_permutation_element_by_node(n, ipk, li)
@@ -107,10 +110,12 @@ pub mod permutation {
     impl<'a> Permutation for &'a [usize] {
         type Iter = Cloned<Iter<'a, usize>>;
 
+        #[inline]
         fn iterable(&self) -> Self::Iter {
             self.iter().cloned()
         }
 
+        #[inline]
         fn index(&self, i: usize) -> usize {
             self[i]
         }
@@ -129,6 +134,7 @@ pub mod permutation {
     pub struct InplacePermutator;
 
     impl<T, P: ?Sized + Permutation> Permutator<T, P> for InplacePermutator {
+        #[inline]
         fn permute(&mut self, data: &mut [T], permutation: &P) {
             for (i, mut p) in permutation.iterable().enumerate() {
                 while p < i {
@@ -158,6 +164,7 @@ pub struct PermutationGenerator {
 
 impl PermutationGenerator {
     /// Generate a new permutation for a sorted array of a given size.
+    #[inline]
     fn new(size: usize) -> PermutationGenerator {
         PermutationGenerator {
             size,
@@ -170,6 +177,7 @@ impl PermutationGenerator {
 impl Iterator for PermutationGenerator {
     type Item = usize;
 
+    #[inline]
     fn next(&mut self) -> Option<usize> {
         let k2 = 1 << (self.ipk - 1);
 
@@ -187,6 +195,7 @@ impl Iterator for PermutationGenerator {
         Some(foundation::get_permutation_element_by_node(self.size, self.ipk, li))
     }
 
+    #[inline]
     fn size_hint(&self) -> (usize, Option<usize>) {
         let k2 = 1 << (self.ipk - 1);
         let size = self.size - (k2 + self.li - 1);
@@ -198,9 +207,11 @@ impl ExactSizeIterator for PermutationGenerator {}
 impl Permutation for PermutationGenerator {
     type Iter = PermutationGenerator;
 
+    #[inline]
     fn iterable(&self) -> PermutationGenerator {
         self.clone()
     }
+    #[inline]
     fn index(&self, i: usize) -> usize {
         foundation::get_permutation_element(self.size, i)
     }
@@ -215,6 +226,7 @@ impl Permutation for PermutationGenerator {
 /// eytzinger::eytzingerize(&mut data, &mut eytzinger::permutation::InplacePermutator);
 /// assert_eq!(data, [3, 1, 5, 0, 2, 4, 6]);
 /// ```
+#[inline]
 pub fn eytzingerize<T, P: Permutator<T, PermutationGenerator>>(data: &mut [T], permutator: &mut P) {
     let len = data.len();
     permutator.permute(data, &PermutationGenerator::new(len))
@@ -314,11 +326,13 @@ pub trait SliceExt<T> {
 /// assert_eq!(eytzinger_search_by(&s, |x| x.cmp(&6)), Some(6));
 /// assert_eq!(eytzinger_search_by(&s, |x| x.cmp(&7)), None);
 /// ```
+#[inline]
 pub fn eytzinger_search_by<'a, T: 'a, F>(data: &'a [T], f: F) -> Option<usize>
     where F: FnMut(&'a T) -> Ordering {
     eytzinger_search_by_impl(data, f)
 }
 
+#[inline]
 #[cfg(not(feature = "branchless"))]
 fn eytzinger_search_by_impl<'a, T: 'a, F>(data: &'a [T], mut f: F) -> Option<usize>
     where F: FnMut(&'a T) -> Ordering {
@@ -343,6 +357,7 @@ fn eytzinger_search_by_impl<'a, T: 'a, F>(data: &'a [T], mut f: F) -> Option<usi
     }
 }
 
+#[inline]
 #[cfg(feature = "branchless")]
 fn eytzinger_search_by_impl<'a, T: 'a, F>(data: &'a [T], mut f: F) -> Option<usize>
     where F: FnMut(&'a T) -> Ordering {
@@ -367,18 +382,22 @@ fn eytzinger_search_by_impl<'a, T: 'a, F>(data: &'a [T], mut f: F) -> Option<usi
 }
 
 impl<T> SliceExt<T> for [T] {
+    #[inline]
     fn eytzingerize<P: Permutator<T, PermutationGenerator>>(&mut self, permutator: &mut P) {
         eytzingerize(self, permutator)
     }
 
+    #[inline]
     fn eytzinger_search<Q: ?Sized>(&self, x: &Q) -> Option<usize> where Q: Ord, T: Borrow<Q> {
         self.eytzinger_search_by(|e| e.borrow().cmp(x))
     }
 
+    #[inline]
     fn eytzinger_search_by<'a, F>(&'a self, f: F) -> Option<usize> where F: FnMut(&'a T) -> Ordering, T: 'a {
         eytzinger_search_by(self, f)
     }
 
+    #[inline]
     fn eytzinger_search_by_key<'a, B, F, Q: ?Sized>(&'a self, b: &Q, mut f: F) -> Option<usize>
         where B: Borrow<Q>,
               F: FnMut(&'a T) -> B,

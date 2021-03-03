@@ -92,7 +92,7 @@ pub mod foundation {
 
 /// Abstractions around applying generic permutations using generic implementations.
 pub mod permutation {
-    use std::iter::Cloned;
+    use std::iter::{Cloned, Enumerate};
     use std::slice::Iter;
 
     /// A generic permutation.
@@ -127,10 +127,11 @@ pub mod permutation {
         fn permute(&mut self, data: &mut [T], permutation: &P);
     }
 
+
     /// Simple permutator that does not allocate.
     ///
     /// Worst-case runtime is in `O(n^2)`, so you should only use this for small permutations.
-    #[derive(Clone, Copy, Debug)]
+    #[derive(Clone, Copy, Debug, Default)]
     pub struct InplacePermutator;
 
     impl<T, P: ?Sized + Permutation> Permutator<T, P> for InplacePermutator {
@@ -144,6 +145,51 @@ pub mod permutation {
                 if p > i {
                     data.swap(i, p);
                 }
+            }
+        }
+    }
+
+
+    /// Simple permutator that stack-allocates a copy of the data (using recursion).
+    ///
+    /// Worst-case runtime is `O(n)`, but this takes `O(n)` stack space so it WILL NOT work for large permutations.
+    #[derive(Clone, Copy, Debug, Default)]
+    pub struct StackCopyPermutator;
+
+    fn recursive_permute<T: Clone, P: ?Sized + Permutation>(data: &mut [T], permutation: &mut Enumerate<P::Iter>) {
+        if let Some((i, p)) = permutation.next() {
+            let item = data[p].clone();
+            recursive_permute::<T, P>(data, permutation);
+            data[i] = item;
+        }
+    }
+
+    impl<T: Clone, P: ?Sized + Permutation> Permutator<T, P> for StackCopyPermutator {
+        #[inline]
+        fn permute(&mut self, data: &mut [T], permutation: &P) {
+            let mut iter = permutation.iterable().enumerate();
+            recursive_permute::<T, P>(data, &mut iter);
+        }
+    }
+
+
+    /// Simple permutator that heap-allocates a copy of the data.
+    ///
+    /// Worst-case runtime is `O(n)`, taking `O(n)` heap space in a reusable buffer.
+    /// This is an acceptable permutator for large permutations, provided that the data
+    /// is (efficiently) cloneable.
+    #[derive(Debug, Default)]
+    pub struct HeapCopyPermutator<T> {
+        buffer: Vec<T>,
+    }
+
+    impl<T: Clone, P: ?Sized + Permutation> Permutator<T, P> for HeapCopyPermutator<T> {
+        #[inline]
+        fn permute(&mut self, data: &mut [T], permutation: &P) {
+            self.buffer.clear();
+            self.buffer.extend(permutation.iterable().map(|i| data[i].clone()));
+            for (i, t) in self.buffer.drain(..).enumerate() {
+                data[i] = t;
             }
         }
     }
@@ -499,6 +545,14 @@ mod tests {
     }
 
     #[test]
+    fn simple_heap_copy_permutation() {
+        let permutation: &[usize] = &[4, 2, 3, 0, 1];
+        let mut data = [1, 2, 3, 4, 5];
+        HeapCopyPermutator::default().permute(&mut data, &permutation);
+        assert_eq!(data, [5, 3, 4, 1, 2]);
+    }
+
+    #[test]
     fn search_negative() {
         let data: &[i32] = &[6, 2, 10, 0, 4, 8, 12];
         for i in -10..20 {
@@ -507,16 +561,28 @@ mod tests {
         }
     }
 
+    fn test_permutation<P: Default>(junk: Vec<usize>) -> bool where for<'a> P: Permutator<usize, &'a [usize]> {
+        // first create a permutation from the random array
+        let mut perm: Vec<_> = (0..junk.len()).collect();
+        perm.sort_by_key(|&i| junk[i]);
+
+        // now test
+        let mut data: Vec<_> = (0..perm.len()).collect();
+        P::default().permute(data.as_mut_slice(), &perm.as_slice());
+        data == perm
+    }
+
     quickcheck! {
         fn inplace_permutation(junk: Vec<usize>) -> bool {
-            // first create a permutation from the random array
-            let mut perm: Vec<_> = (0..junk.len()).collect();
-            perm.sort_by_key(|&i| junk[i]);
+            test_permutation::<InplacePermutator>(junk)
+        }
 
-            // now test
-            let mut data: Vec<_> = (0..perm.len()).collect();
-            InplacePermutator.permute(data.as_mut_slice(), &perm.as_slice());
-            data == perm
+        fn stack_permutation(junk: Vec<usize>) -> bool {
+            test_permutation::<StackCopyPermutator>(junk)
+        }
+
+        fn heap_copy_permutation(junk: Vec<usize>) -> bool {
+            test_permutation::<HeapCopyPermutator<_>>(junk)
         }
 
         fn eytzinger_tree_invariants(length: usize) -> bool {

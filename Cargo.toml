@@ -10,10 +10,19 @@ authors = ["main() <main@ehvag.de>"]
 [profile.release]
 debug = true
 
+[dependencies.nonmax]
+version = "0.5.0"
+optional = true
+[dependencies.nohash-hasher]
+version = "0.2.0"
+optional = true
+
 [dev-dependencies]
 quickcheck = "0.4"
 
 [features]
-default = ["heap-permutator"]
-heap-permutator = []
+default = ["heap-permutator", "heap-permutator-sparse"]
+heap-permutator = ["nonmax"]
+heap-permutator-sparse = ["nohash-hasher"]
 branchless = []
+

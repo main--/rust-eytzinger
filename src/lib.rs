@@ -91,6 +91,8 @@ pub mod foundation {
 }
 
 /// Abstractions around applying generic permutations using generic implementations.
+///
+/// You should pick one that matches your use case.
 pub mod permutation {
     use std::iter::{Cloned, Enumerate};
     use std::slice::Iter;
@@ -194,37 +196,73 @@ pub mod permutation {
         }
     }
 
-    /// Simple permutator that heap-allocates a copy of the data.
+    /// Permutator that uses an auxiliary heap buffer to ensure linear runtime.
     ///
     /// Worst-case runtime is `O(n)`, taking `O(n)` heap space in a reusable buffer.
-    /// This is a good permutator for large permutations
+    /// The buffer we allocate uses exactly `sizeof(usize) * data.len()` bytes.
+    /// This is a decent permutator for large permutations.
     #[derive(Debug, Default)]
     #[cfg(feature = "heap-permutator")]
     pub struct HeapPermutator {
-        buffer: Vec<Option<usize>>,
+        buffer: Vec<Option<nonmax::NonMaxUsize>>,
     }
 
     #[cfg(feature = "heap-permutator")]
     impl<T:std::fmt::Debug, P: ?Sized + Permutation> Permutator<T, P> for HeapPermutator {
         #[inline]
         fn permute(&mut self, data: &mut [T], permutation: &P) {
+            use std::convert::TryInto;
             self.buffer.clear();
             self.buffer.resize(data.len(), None);
             for mut i in 0..data.len() {
                 let mut j = permutation.index(i);
-                //println!("i={} j={} data={:?} self={:?}", i, j, data, self);
                 if j < i {
-                    j = self.buffer[j].take().unwrap();
-                    //println!("falling back to {}", j);
+                    j = self.buffer[j].take().unwrap().get();
                 }
                 data.swap(i, j);
                 if let Some(x) = self.buffer[i].take() {
+                    i = x.get();
+                }
+
+                if j != i {
+                    self.buffer[j] = Some(i.try_into().unwrap());
+                    self.buffer[i] = Some(j.try_into().unwrap());
+                }
+            }
+        }
+    }
+
+    /// Permutator that uses an auxiliary heap buffer to ensure linear runtime.
+    ///
+    /// Worst-case runtime is `O(n)`, worst-case memory usage is also `O(n)`.
+    /// The difference to `HeapPermutator` is that this implementation uses a `HashMap`
+    /// instead of a `Vec` for storage. Hence, the exact the memory usage can no longer be
+    /// predicted - but in return, it should be lower in most cases.
+    /// This is a decent permutator for large permutations.
+    #[derive(Debug, Default)]
+    #[cfg(feature = "heap-permutator-sparse")]
+    pub struct SparseHeapPermutator {
+        buffer: std::collections::HashMap<usize, usize, nohash_hasher::BuildNoHashHasher<usize>>,
+    }
+
+    #[cfg(feature = "heap-permutator-sparse")]
+    impl<T:std::fmt::Debug, P: ?Sized + Permutation> Permutator<T, P> for SparseHeapPermutator {
+        #[inline]
+        fn permute(&mut self, data: &mut [T], permutation: &P) {
+            self.buffer.clear();
+            for mut i in 0..data.len() {
+                let mut j = permutation.index(i);
+                if j < i {
+                    j = self.buffer.remove(&j).unwrap();
+                }
+                data.swap(i, j);
+                if let Some(x) = self.buffer.remove(&i) {
                     i = x;
                 }
 
                 if j != i {
-                    self.buffer[j] = Some(i);
-                    self.buffer[i] = Some(j);
+                    self.buffer.insert(j, i);
+                    self.buffer.insert(i, j);
                 }
             }
         }
@@ -590,6 +628,15 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "heap-permutator-sparse")]
+    fn simple_heap_permutation_sparse() {
+        let permutation: &[usize] = &[4, 2, 3, 0, 1];
+        let mut data = [1, 2, 3, 4, 5];
+        SparseHeapPermutator::default().permute(&mut data, &permutation);
+        assert_eq!(data, [5, 3, 4, 1, 2]);
+    }
+
+    #[test]
     fn simple_heap_copy_permutation() {
         let permutation: &[usize] = &[4, 2, 3, 0, 1];
         let mut data = [1, 2, 3, 4, 5];
@@ -629,6 +676,11 @@ mod tests {
         #[cfg(feature = "heap-permutator")]
         fn heap_permutation(junk: Vec<usize>) -> bool {
             test_permutation::<HeapPermutator>(junk)
+        }
+
+        #[cfg(feature = "heap-permutator-sparse")]
+        fn heap_permutation_sparse(junk: Vec<usize>) -> bool {
+            test_permutation::<SparseHeapPermutator>(junk)
         }
 
         fn heap_copy_permutation(junk: Vec<usize>) -> bool {

@@ -193,6 +193,42 @@ pub mod permutation {
             }
         }
     }
+
+    /// Simple permutator that heap-allocates a copy of the data.
+    ///
+    /// Worst-case runtime is `O(n)`, taking `O(n)` heap space in a reusable buffer.
+    /// This is a good permutator for large permutations
+    #[derive(Debug, Default)]
+    #[cfg(feature = "heap-permutator")]
+    pub struct HeapPermutator {
+        buffer: Vec<Option<usize>>,
+    }
+
+    #[cfg(feature = "heap-permutator")]
+    impl<T:std::fmt::Debug, P: ?Sized + Permutation> Permutator<T, P> for HeapPermutator {
+        #[inline]
+        fn permute(&mut self, data: &mut [T], permutation: &P) {
+            self.buffer.clear();
+            self.buffer.resize(data.len(), None);
+            for mut i in 0..data.len() {
+                let mut j = permutation.index(i);
+                //println!("i={} j={} data={:?} self={:?}", i, j, data, self);
+                if j < i {
+                    j = self.buffer[j].take().unwrap();
+                    //println!("falling back to {}", j);
+                }
+                data.swap(i, j);
+                if let Some(x) = self.buffer[i].take() {
+                    i = x;
+                }
+
+                if j != i {
+                    self.buffer[j] = Some(i);
+                    self.buffer[i] = Some(j);
+                }
+            }
+        }
+    }
 }
 
 
@@ -545,6 +581,15 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "heap-permutator")]
+    fn simple_heap_permutation() {
+        let permutation: &[usize] = &[4, 2, 3, 0, 1];
+        let mut data = [1, 2, 3, 4, 5];
+        HeapPermutator::default().permute(&mut data, &permutation);
+        assert_eq!(data, [5, 3, 4, 1, 2]);
+    }
+
+    #[test]
     fn simple_heap_copy_permutation() {
         let permutation: &[usize] = &[4, 2, 3, 0, 1];
         let mut data = [1, 2, 3, 4, 5];
@@ -579,6 +624,11 @@ mod tests {
 
         fn stack_permutation(junk: Vec<usize>) -> bool {
             test_permutation::<StackCopyPermutator>(junk)
+        }
+
+        #[cfg(feature = "heap-permutator")]
+        fn heap_permutation(junk: Vec<usize>) -> bool {
+            test_permutation::<HeapPermutator>(junk)
         }
 
         fn heap_copy_permutation(junk: Vec<usize>) -> bool {

@@ -208,7 +208,7 @@ pub mod permutation {
     }
 
     #[cfg(feature = "heap-permutator")]
-    impl<T:std::fmt::Debug, P: ?Sized + Permutation> Permutator<T, P> for HeapPermutator {
+    impl<T, P: ?Sized + Permutation> Permutator<T, P> for HeapPermutator {
         #[inline]
         fn permute(&mut self, data: &mut [T], permutation: &P) {
             use std::convert::TryInto;
@@ -246,7 +246,7 @@ pub mod permutation {
     }
 
     #[cfg(feature = "heap-permutator-sparse")]
-    impl<T:std::fmt::Debug, P: ?Sized + Permutation> Permutator<T, P> for SparseHeapPermutator {
+    impl<T, P: ?Sized + Permutation> Permutator<T, P> for SparseHeapPermutator {
         #[inline]
         fn permute(&mut self, data: &mut [T], permutation: &P) {
             self.buffer.clear();

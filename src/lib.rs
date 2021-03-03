@@ -211,7 +211,7 @@ pub struct PermutationGenerator {
 impl PermutationGenerator {
     /// Generate a new permutation for a sorted array of a given size.
     #[inline]
-    fn new(size: usize) -> PermutationGenerator {
+    pub fn new(size: usize) -> PermutationGenerator {
         PermutationGenerator {
             size,
             ipk: 1,
